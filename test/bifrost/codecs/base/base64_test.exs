@@ -1,9 +1,33 @@
 defmodule Bifrost.Codecs.Base.Base64Test do
   use ExUnit.Case
+  use ExUnitProperties
   import Bifrost
   import Bifrost.Codecs.Base.Base64
 
   doctest Bifrost.Codecs.Base.Base64
+
+  property "Base64.encode/decode is idempotent" do
+    check all(bin <- binary()) do
+      assert bin == bin |> decode(codec()) |> elem(1) |> encode(codec()) |> elem(1)
+    end
+  end
+
+  property "Base64 encoding only contains characters from its alphabet" do
+    check all(bin <- binary()) do
+      alphabet =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+        |> String.codepoints()
+
+      base64 = bin |> decode(codec()) |> elem(1)
+
+      chars_not_in_alphabet =
+        base64
+        |> String.codepoints()
+        |> Enum.filter(fn char -> !Enum.member?(alphabet, char) end)
+
+      assert chars_not_in_alphabet == []
+    end
+  end
 
   test "decodes to 1 byte" do
     assert {:ok, "TQ==", <<>>} = <<77>> |> decode(codec())

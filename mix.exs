@@ -24,6 +24,7 @@ defmodule Bifrost.MixProject do
 
   defp deps do
     [
+      {:stream_data, "~> 0.5", only: :test},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end

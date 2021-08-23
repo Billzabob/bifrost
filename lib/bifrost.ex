@@ -674,7 +674,8 @@ defmodule Bifrost do
   ```
   """
   @spec bits(non_neg_integer) :: codec(non_neg_integer)
-  def bits(count), do: create(&bits_encoder(count, &1), &bits_decoder(count, &1))
+  def bits(count) when count >= 0, do: create(&bits_encoder(count, &1), &bits_decoder(count, &1))
+  def bits(bad_count), do: raise("count must be >= 0, was #{bad_count}")
 
   @doc """
   Pads the bitstring before decoding.
@@ -787,19 +788,12 @@ defmodule Bifrost do
   defp split_by(binary, group_size),
     do: binary |> String.codepoints() |> Enum.chunk_every(group_size) |> Enum.map(&Enum.join/1)
 
-  defp bits_encoder(count, _n) when count <= 0, do: raise("count must be >= 0, was #{count}")
-
-  defp bits_encoder(_count, n) when is_integer(n) and n < 0,
-    do: {:error, "Cannot encode negative number #{n}"}
-
-  defp bits_encoder(count, n) when is_integer(n) do
+  defp bits_encoder(count, n) do
     if(n < Integer.pow(2, count),
       do: {:ok, <<n::size(count)>>},
       else: {:error, "#{n} cannot be encoded in #{count} bits"}
     )
   end
-
-  defp bits_encoder(_count, other), do: {:error, "'#{inspect(other)}' is not a positive integer"}
 
   defp bits_decoder(count, bits) do
     case bits do

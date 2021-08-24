@@ -1,5 +1,5 @@
 defmodule Bifrost.Codecs.Base.Base64Test do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   use ExUnitProperties
   import Bifrost
   import Bifrost.Codecs.Base.Base64

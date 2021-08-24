@@ -7,19 +7,44 @@ defmodule Bifrost do
 
   alias Bifrost.Codec
 
+  @typedoc """
+  The type that a codec encodes/decodes
+  """
   @type type :: any
+
+  @typedoc """
+  Another type that a codec encodes/decodes. Used in specs that convert a codec from one type to another.
+  """
   @type type2 :: any
+
+  @typedoc """
+  The bits that are unconsumed after decoding bits using a codec.
+  """
   @type remaining_bits :: bitstring
 
+  @typedoc """
+  The result of encoding a type to a bitstring using its codec.
+  """
   @type encode_result :: {:ok, bitstring} | {:error, String.t()}
+
+  @typedoc """
+  The result of decoding a bitstring to its type using a codec.
+  """
   @type decode_result(a) :: {:ok, a, remaining_bits} | {:error, String.t(), remaining_bits}
 
-  @type encoder(a) :: (a -> encode_result)
-  @type decoder(a) :: (bitstring -> decode_result(a))
+  @typedoc """
+  A codec for a certain type. Allows you to encode that type to a bitstring and decode a bitstring back into that type.
+  """
+  @type codec(a) :: %Codec{encode: (a -> encode_result), decode: (bitstring -> decode_result(a))}
 
-  @type codec(a) :: %Codec{encode: encoder(a), decode: decoder(a)}
-
+  @typedoc """
+  A codec for the boolean type.
+  """
   @type boolean_codec :: codec(boolean)
+
+  @typedoc """
+  A codec for the list type.
+  """
   @type list_codec(a) :: codec(list(a))
 
   @doc """
@@ -38,7 +63,7 @@ defmodule Bifrost do
   #Bifrost.Codec<...>
   ```
   """
-  @spec create(encoder(type), decoder(type)) :: %Codec{}
+  @spec create((type -> encode_result), (bitstring -> decode_result(type))) :: %Codec{}
   def create(encode, decode) when is_function(encode, 1) and is_function(decode, 1),
     do: %Codec{encode: safe_encode(encode), decode: safe_decode(decode)}
 
@@ -499,7 +524,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = take_while(bool_bit(), byte())
+  iex> codec = take_while(bool(), byte())
   ...> <<1::1, 7, 1::1, 8, 0::1>> |> decode(codec)
   {:ok, [7, 8], <<>>}
   ...> [7, 8] |> encode(codec)
@@ -526,7 +551,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = take_until(bool_bit(), byte())
+  iex> codec = take_until(bool(), byte())
   ...> <<0::1, 7, 0::1, 8, 1::1>> |> decode(codec)
   {:ok, [7, 8], <<>>}
   ...> [7, 8] |> encode(codec)
@@ -704,21 +729,21 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> <<1::1>> |> decode(bool_bit())
+  iex> <<1::1>> |> decode(bool())
   {:ok, true, <<>>}
 
-  iex> <<0::1>> |> decode(bool_bit())
+  iex> <<0::1>> |> decode(bool())
   {:ok, false, <<>>}
 
-  iex> true |> encode(bool_bit())
+  iex> true |> encode(bool())
   {:ok, <<1::1>>}
 
-  iex> false |> encode(bool_bit())
+  iex> false |> encode(bool())
   {:ok, <<0::1>>}
   ```
   """
-  @spec bool_bit() :: boolean_codec()
-  def bool_bit() do
+  @spec bool() :: boolean_codec()
+  def bool() do
     bit()
     |> convert(
       fn
@@ -764,6 +789,24 @@ defmodule Bifrost do
   """
   @spec bytes(non_neg_integer) :: codec(non_neg_integer)
   def bytes(count), do: bits(count * 8)
+
+
+  @doc """
+  Uses zlib to compress the bits after encoding with `codec` and to uncompress before decoding with `codec`.
+
+  ## Examples
+  ```
+  # Compression actually makes the result bigger with data this small just from the headers but you get the point.
+  iex> [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] |> encode(list(byte()) |> zlib())
+  {:ok, <<120, 156, 99, 100, 98, 102, 97, 101, 99, 231, 224, 228, 2, 0, 0, 230, 0, 56>>}
+
+  iex> <<120, 156, 99, 100, 98, 102, 97, 101, 99, 231, 224, 228, 2, 0, 0, 230, 0, 56>> |> decode(list(byte()) |> zlib())
+  {:ok, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], <<>>}
+
+  ```
+  """
+  @spec zlib(codec(type)) :: codec(type)
+  def zlib(codec), do: create(&zlib_encoder(codec, &1), &zlib_decoder(codec, &1))
 
   defp safe_encode(encode) do
     fn a ->
@@ -865,5 +908,16 @@ defmodule Bifrost do
     with {:error, _, _} <- codec1.decode.(bits) do
       codec2.decode.(bits)
     end
+  end
+
+  defp zlib_encoder(codec, a) do
+    with {:ok, bits} <- encode(a, codec) do
+      {:ok, :zlib.compress(bits)}
+    end
+  end
+
+  defp zlib_decoder(codec, bits) do
+    bits = :zlib.uncompress(bits)
+    decode(bits, codec)
   end
 end

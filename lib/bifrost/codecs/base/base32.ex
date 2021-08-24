@@ -1,4 +1,16 @@
 defmodule Bifrost.Codecs.Base.Base32 do
+  @moduledoc """
+  Base32 codec implemented using Bifrost combinators.
+
+  ```
+  iex> "foobar" |> decode(codec())
+  {:ok, "MZXW6YTBOI======", <<>>}
+
+  iex> "MZXW6YTBOI======" |> encode(codec())
+  {:ok, "foobar"}
+  ```
+  """
+
   import Bifrost
 
   @capitals 65..90 |> Enum.map(&:binary.encode_unsigned/1)
@@ -9,6 +21,17 @@ defmodule Bifrost.Codecs.Base.Base32 do
                |> Enum.map(fn {char, num} -> {num, char} end)
                |> Enum.into(%{})
 
+  @doc """
+  Builds a codec for Base32 encoding/decoding
+
+  ```
+  iex> "foobar" |> decode(codec())
+  {:ok, "MZXW6YTBOI======", <<>>}
+
+  iex> "MZXW6YTBOI======" |> encode(codec())
+  {:ok, "foobar"}
+  ```
+  """
   @spec codec() :: Bifrost.codec(String.t())
   def codec() do
     char_4 = bits(4) |> done() |> pad(1) |> mapping(@num_to_char)

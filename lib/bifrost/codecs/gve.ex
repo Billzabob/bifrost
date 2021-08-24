@@ -5,7 +5,7 @@ defmodule Bifrost.Codecs.Gve do
   def codec() do
     list_of(4, bits(2))
     |> then(
-      fn lengths -> Enum.map(lengths, &bytes/1) |> sequence() end,
+      fn lengths -> Enum.map(lengths, &uint(8 * &1)) |> sequence() end,
       fn numbers -> Enum.map(numbers, &size_in_bytes/1) end
     )
   end

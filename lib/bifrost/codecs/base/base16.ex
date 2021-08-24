@@ -18,7 +18,7 @@ defmodule Bifrost.Codecs.Base.Base16 do
 
   @num_to_char (@numbers ++ @capitals)
                |> Enum.with_index()
-               |> Enum.map(fn {char, num} -> {num, char} end)
+               |> Enum.map(fn {char, num} -> {<<num::4>>, char} end)
                |> Enum.into(%{})
 
   @doc """

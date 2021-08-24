@@ -24,8 +24,12 @@ defmodule Bifrost.MixProject do
 
   defp deps do
     [
-      {:stream_data, "~> 0.5", only: :test},
-      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
+      {:benchee, "~> 1.0", only: :dev},
+      {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
+      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
+      {:exprof, "~> 0.2.0"},
+      {:stream_data, "~> 0.5", only: :test}
     ]
   end
 

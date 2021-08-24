@@ -20,7 +20,7 @@ end
 
 The `Bifrost` module provides a number of predefined codecs and combinators that you can use to build new codes.
 ```elixir
-iex> first_codec = sequence([byte(), byte(), byte()])
+iex> first_codec = sequence([uint(8), uint(8), uint(8)])
 ...> <<0x10, 0xFF, 0xAB>> |> decode(first_codec)
 {:ok, [16, 255, 171], <<>>}
 ...> [16, 255, 171] |> encode(first_codec)

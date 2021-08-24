@@ -23,9 +23,9 @@ defmodule Bifrost do
   @type remaining_bits :: bitstring
 
   @typedoc """
-  The result of encoding a type to a bitstring using its codec.
+  The result of encoding a type to a bitstring using its codec. The error includes the value that failed to encode.
   """
-  @type encode_result :: {:ok, bitstring} | {:error, String.t()}
+  @type encode_result(a) :: {:ok, bitstring} | {:error, String.t(), a}
 
   @typedoc """
   The result of decoding a bitstring to its type using a codec.
@@ -35,7 +35,10 @@ defmodule Bifrost do
   @typedoc """
   A codec for a certain type. Allows you to encode that type to a bitstring and decode a bitstring back into that type.
   """
-  @type codec(a) :: %Codec{encode: (a -> encode_result), decode: (bitstring -> decode_result(a))}
+  @type codec(a) :: %Codec{
+          encode: (a -> encode_result(a)),
+          decode: (bitstring -> decode_result(a))
+        }
 
   @typedoc """
   A codec for the boolean type.
@@ -63,7 +66,7 @@ defmodule Bifrost do
   #Bifrost.Codec<...>
   ```
   """
-  @spec create((type -> encode_result), (bitstring -> decode_result(type))) :: %Codec{}
+  @spec create((type -> encode_result(type)), (bitstring -> decode_result(type))) :: %Codec{}
   def create(encode, decode) when is_function(encode, 1) and is_function(decode, 1),
     do: %Codec{encode: safe_encode(encode), decode: safe_decode(decode)}
 
@@ -72,11 +75,11 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> 198 |> encode(byte())
+  iex> 198 |> encode(uint(8))
   {:ok, <<198>>}
   ```
   """
-  @spec encode(type, codec(type)) :: encode_result
+  @spec encode(type, codec(type)) :: encode_result(type)
   def encode(value, %Codec{encode: encode}) when is_function(encode, 1), do: encode.(value)
   def encode(_value, %Codec{encode: _encode}), do: nil
 
@@ -87,7 +90,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> <<198>> |> decode(byte())
+  iex> <<198>> |> decode(uint(8))
   {:ok, 198, <<>>}
   ```
   """
@@ -100,10 +103,10 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> {198, 2} |> encode(combine(byte(), byte()))
+  iex> {198, 2} |> encode(combine(uint(8), uint(8)))
   {:ok, <<198, 2>>}
 
-  iex> <<198, 2>> |> decode(combine(byte(), byte()))
+  iex> <<198, 2>> |> decode(combine(uint(8), uint(8)))
   {:ok, {198, 2}, <<>>}
   ```
   """
@@ -128,7 +131,7 @@ defmodule Bifrost do
   {:ok, <<200>>}
 
   iex> 22 |> encode(constant(10, <<200>>))
-  {:error, "22 did not equal 10 in constant"}
+  {:error, "Did not equal 10 in constant", 22}
   ```
   """
   @spec constant(type, bitstring) :: codec(type)
@@ -152,7 +155,7 @@ defmodule Bifrost do
   {:ok, <<>>}
 
   iex> 22 |> encode(value(10))
-  {:error, "22 did not equal 10 in constant"}
+  {:error, "Did not equal 10 in constant", 22}
   ```
   """
   @spec value(type) :: codec(type)
@@ -171,7 +174,7 @@ defmodule Bifrost do
   ...> end
   ...> <<1>> |> decode(EmptyExample.listify([]))
   {:ok, [], <<1>>}
-  ...> <<22, 38>> |> decode(EmptyExample.listify([byte(), byte()]))
+  ...> <<22, 38>> |> decode(EmptyExample.listify([uint(8), uint(8)]))
   {:ok, [22, 38], <<>>}
   ```
   """
@@ -185,7 +188,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> optional_byte = byte() |> fallback(nothing())
+  iex> optional_byte = uint(8) |> fallback(nothing())
   ...> <<8>> |> decode(optional_byte)
   {:ok, 8, <<>>}
   ...> <<8::4>> |> decode(optional_byte)
@@ -200,7 +203,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> optional_byte = byte() |> fallback(nothing())
+  iex> optional_byte = uint(8) |> fallback(nothing())
   ...> <<8>> |> decode(optional_byte)
   {:ok, 8, <<>>}
   ...> <<8::4>> |> decode(optional_byte)
@@ -222,7 +225,7 @@ defmodule Bifrost do
   ...>   def choose([]), do: fail("None of the choices worked")
   ...>   def choose([codec | rest]), do: fallback(codec, choice(rest))
   ...> end
-  ...> codec = FailExample.choose([byte(), bits(4)])
+  ...> codec = FailExample.choose([uint(8), bits(4)])
   ...> <<1>> |> decode(codec)
   {:ok, 1, <<>>}
   ...> <<1::2>> |> decode(codec)
@@ -246,13 +249,13 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> <<1>> |> decode(choice([byte(), bits(4)]))
+  iex> <<1>> |> decode(choice([uint(8), bits(4)]))
   {:ok, 1, <<>>}
 
-  iex> <<1::4>> |> decode(choice([byte(), bits(4)]))
-  {:ok, 1, <<>>}
+  iex> <<1::4>> |> decode(choice([uint(8), bits(4)]))
+  {:ok, <<1::4>>, <<>>}
 
-  iex> <<1::2>> |> decode(choice([byte(), bits(4)]))
+  iex> <<1::2>> |> decode(choice([uint(8), bits(4)]))
   {:error, "None of the choices worked", <<1::2>>}
   ```
   """
@@ -265,10 +268,10 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> <<11>> |> decode(optional(byte()))
+  iex> <<11>> |> decode(optional(uint(8)))
   {:ok, 11, <<>>}
 
-  iex> <<1::4>> |> decode(optional(byte()))
+  iex> <<1::4>> |> decode(optional(uint(8)))
   {:ok, nil, <<1::4>>}
   ```
   """
@@ -280,10 +283,10 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> <<4>> |> decode(peek(byte()))
+  iex> <<4>> |> decode(peek(uint(8)))
   {:ok, 4, <<4>>}
 
-  iex> codec = peek(byte()) |> combine(byte())
+  iex> codec = peek(uint(8)) |> combine(uint(8))
   ...> <<4>> |> decode(codec)
   {:ok, {4, 4}, <<>>}
   ...> {4, 4} |> encode(codec)
@@ -312,7 +315,7 @@ defmodule Bifrost do
     defstruct a: nil, b: nil
   end
 
-  iex> tuple_codec = combine(byte(), byte())
+  iex> tuple_codec = combine(uint(8), uint(8))
   ...> struct_codec = tuple_codec |> convert(fn {a, b} -> %Foo{a: a, b: b} end, fn %Foo{a: a, b: b} -> {a, b} end)
   ...> <<12, 34>> |> decode(struct_codec)
   {:ok, %Foo{a: 12, b: 34}, <<>>}
@@ -332,8 +335,8 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> length = byte()
-  ...> length_prefixed = length |> then(&list_of(&1, byte()), &length/1)
+  iex> length = uint(8)
+  ...> length_prefixed = length |> then(&list_of(&1, uint(8)), &length/1)
   ...> <<4, 1, 2, 3, 4>> |> decode(length_prefixed)
   {:ok, [1, 2, 3, 4], <<>>}
   ...> [1, 2, 3, 4] |> encode(length_prefixed)
@@ -349,7 +352,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = byte() |> ensure(& &1 > 10, "Must be greater than 10")
+  iex> codec = uint(8) |> ensure(& &1 > 10, "Must be greater than 10")
   ...> 5 |> encode(codec)
   {:error, "Must be greater than 10"}
   ...> 11 |> encode(codec)
@@ -374,7 +377,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = byte() |> refute(& &1 > 10, "Can't be greater than 10")
+  iex> codec = uint(8) |> refute(& &1 > 10, "Can't be greater than 10")
   ...> 11 |> encode(codec)
   {:error, "Can't be greater than 10"}
   ...> 5 |> encode(codec)
@@ -401,10 +404,10 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> <<10>> |> decode(byte() |> done())
+  iex> <<10>> |> decode(uint(8) |> done())
   {:ok, 10, <<>>}
 
-  iex> <<10, 11>> |> decode(byte() |> done())
+  iex> <<10, 11>> |> decode(uint(8) |> done())
   {:error, "There was more to parse", <<11>>}
   ```
   """
@@ -426,7 +429,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = list(byte()) |> map_list(& &1 + 1, & &1 - 1)
+  iex> codec = list(uint(8)) |> map_list(& &1 + 1, & &1 - 1)
   ...> <<10, 11, 12>> |> decode(codec)
   {:ok, [11, 12, 13], <<>>}
   ...> [11, 12, 13] |> encode(codec)
@@ -442,7 +445,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = list(byte()) |> reverse()
+  iex> codec = list(uint(8)) |> reverse()
   ...> [1, 2, 3] |> encode(codec)
   {:ok, <<3, 2, 1>>}
   ...> <<3, 2, 1>> |> decode(codec)
@@ -457,7 +460,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> non_empty_list = byte() |> cons(list(byte()))
+  iex> non_empty_list = uint(8) |> cons(list(uint(8)))
   ...> [1] |> encode(non_empty_list)
   {:ok, <<1>>}
   ...> [] |> encode(non_empty_list)
@@ -483,11 +486,11 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = list_of(3, byte()) |> append(bits(4))
-  ...> [1, 2, 3, 4] |> encode(codec)
+  iex> codec = list_of(3, uint(8)) |> append(bits(4))
+  ...> [1, 2, 3, <<4::4>>] |> encode(codec)
   {:ok, <<1, 2, 3, 4::4>>}
   ...> <<1, 2, 3, 4::4>> |> decode(codec)
-  {:ok, [1, 2, 3, 4], <<>>}
+  {:ok, [1, 2, 3, <<4::4>>], <<>>}
   ```
   """
   @spec append(list_codec(type), codec(type)) :: list_codec(type)
@@ -508,7 +511,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = sequence([byte(), byte(), byte()])
+  iex> codec = sequence([uint(8), uint(8), uint(8)])
   ...> <<0x10, 0xFF, 0xAB>> |> decode(codec)
   {:ok, [16, 255, 171], <<>>}
   ...> [16, 255, 171] |> encode(codec)
@@ -524,7 +527,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = take_while(bool(), byte())
+  iex> codec = take_while(bool(), uint(8))
   ...> <<1::1, 7, 1::1, 8, 0::1>> |> decode(codec)
   {:ok, [7, 8], <<>>}
   ...> [7, 8] |> encode(codec)
@@ -551,7 +554,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = take_until(bool(), byte())
+  iex> codec = take_until(bool(), uint(8))
   ...> <<0::1, 7, 0::1, 8, 1::1>> |> decode(codec)
   {:ok, [7, 8], <<>>}
   ...> [7, 8] |> encode(codec)
@@ -566,13 +569,13 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> [1, 2, 3, 4] |> encode(list(byte()))
+  iex> [1, 2, 3, 4] |> encode(list(uint(8)))
   {:ok, <<1, 2, 3, 4>>}
 
-  iex> [] |> encode(list(byte()))
+  iex> [] |> encode(list(uint(8)))
   {:ok, <<>>}
 
-  iex> <<>> |> decode(list(byte()))
+  iex> <<>> |> decode(list(uint(8)))
   {:ok, [], <<>>}
   ```
   """
@@ -584,10 +587,10 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> [1, 2, 3, 4] |> encode(list_of(4, byte()))
+  iex> [1, 2, 3, 4] |> encode(list_of(4, uint(8)))
   {:ok, <<1, 2, 3, 4>>}
 
-  iex> <<1, 2, 3, 4, 5>> |> decode(list_of(4, byte()))
+  iex> <<1, 2, 3, 4, 5>> |> decode(list_of(4, uint(8)))
   {:ok, [1, 2, 3, 4], <<5>>}
   ```
   """
@@ -604,16 +607,16 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> [1, 2, 3, 4] |> encode(non_empty_list(byte()))
+  iex> [1, 2, 3, 4] |> encode(non_empty_list(uint(8)))
   {:ok, <<1, 2, 3, 4>>}
 
-  iex> [] |> encode(non_empty_list(byte()))
-  {:error, "Failed to encode []"}
+  iex> [] |> encode(non_empty_list(uint(8)))
+  {:error, "Failed to encode", []}
 
-  iex> <<1, 2, 3, 4>> |> decode(non_empty_list(byte()))
+  iex> <<1, 2, 3, 4>> |> decode(non_empty_list(uint(8)))
   {:ok, [1, 2, 3, 4], <<>>}
 
-  iex> <<>> |> decode(non_empty_list(byte()))
+  iex> <<>> |> decode(non_empty_list(uint(8)))
   {:error, "Could not decode 8 bits from \\"\\"", <<>>}
   ```
   """
@@ -625,10 +628,10 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> [1, 2, 3, 4] |> encode(length_prefixed(byte(), byte()))
+  iex> [1, 2, 3, 4] |> encode(length_prefixed(uint(8), uint(8)))
   {:ok, <<4, 1, 2, 3, 4>>}
 
-  iex> <<4, 1, 2, 3, 4>> |> decode(length_prefixed(byte(), byte()))
+  iex> <<4, 1, 2, 3, 4>> |> decode(length_prefixed(uint(8), uint(8)))
   {:ok, [1, 2, 3, 4], <<>>}
   ```
   """
@@ -646,7 +649,7 @@ defmodule Bifrost do
 
   ## Examples
   ```
-  iex> codec = list(byte() |> mapping(%{1 => "a", 2 => "b", 3 => "c"}))
+  iex> codec = list(uint(8) |> mapping(%{1 => "a", 2 => "b", 3 => "c"}))
   ...> <<1, 2, 3>> |> decode(codec)
   {:ok, ["a", "b", "c"], <<>>}
   ...> ["a", "b", "c"] |> encode(codec)
@@ -665,37 +668,37 @@ defmodule Bifrost do
   ## Examples
   ```
   iex> <<1::1>> |> decode(bit())
-  {:ok, 1, <<>>}
+  {:ok, <<1::1>>, <<>>}
 
   iex> <<0::1>> |> decode(bit())
-  {:ok, 0, <<>>}
+  {:ok, <<0::1>>, <<>>}
 
-  iex> 1 |> encode(bit())
+  iex> <<1::1>> |> encode(bit())
   {:ok, <<1::1>>}
 
-  iex> 0 |> encode(bit())
+  iex> <<0::1>> |> encode(bit())
   {:ok, <<0::1>>}
 
-  iex> 2 |> encode(bit())
-  {:error, "2 cannot be encoded in 1 bits"}
+  iex> <<2::2>> |> encode(bit())
+  {:error, "Cannot be encoded in 1 bits", <<2::2>>}
   ```
   """
-  @spec bit() :: codec(0 | 1)
+  @spec bit() :: codec(<<_::1>>)
   def bit(), do: bits(1)
 
   @doc """
-  Encodes/decodes a series of bits as an unsigned integer.
+  Encodes/decodes a series of bits.
 
   ## Examples
   ```
   iex> <<3::7>> |> decode(bits(7))
-  {:ok, 3, <<>>}
+  {:ok, <<3::7>>, <<>>}
 
-  iex> 5 |> encode(bits(7))
+  iex> <<5::7>> |> encode(bits(7))
   {:ok, <<5::7>>}
 
-  iex> 300 |> encode(bits(7))
-  {:error, "300 cannot be encoded in 7 bits"}
+  iex> <<300>> |> encode(bits(7))
+  {:error, "Cannot be encoded in 7 bits", <<300>>}
   ```
   """
   @spec bits(non_neg_integer) :: codec(non_neg_integer)
@@ -708,20 +711,27 @@ defmodule Bifrost do
   ## Examples
   ```
   iex> <<1::1>> |> decode(bit() |> pad(2))
-  {:ok, 4, <<>>}
+  {:ok, <<4::3>>, <<>>}
 
   # It's as if you padded it with two zero bits on the right:
   iex> <<1::1, 0::1, 0::1>> |> decode(bits(3))
-  {:ok, 4, <<>>}
+  {:ok, <<4::3>>, <<>>}
 
-  iex> 4 |> encode(bit() |> pad(2))
+  iex> <<4::3>> |> encode(bit() |> pad(2))
   {:ok, <<1::1>>}
   ```
   """
-  @spec pad(codec(type), non_neg_integer) :: codec(type)
+  @spec pad(codec(bitstring), non_neg_integer) :: codec(bitstring)
   def pad(codec, bits) do
-    use Bitwise
-    codec |> convert(&(&1 <<< bits), &(&1 >>> bits))
+    codec
+    |> convert(
+      fn to_pad -> <<to_pad::bits, 0::size(bits)>> end,
+      fn to_unpad ->
+        unpadded_size = bit_size(to_unpad) - bits
+        <<unpadded::bits-size(unpadded_size), 0::size(bits)>> = to_unpad
+        unpadded
+      end
+    )
   end
 
   @doc """
@@ -747,12 +757,12 @@ defmodule Bifrost do
     bit()
     |> convert(
       fn
-        1 -> true
-        0 -> false
+        <<1::1>> -> true
+        <<0::1>> -> false
       end,
       fn
-        true -> 1
-        false -> 0
+        true -> <<1::1>>
+        false -> <<0::1>>
       end
     )
   end
@@ -763,33 +773,66 @@ defmodule Bifrost do
   ## Examples
   ```
   iex> <<123>> |> decode(byte())
-  {:ok, 123, <<>>}
+  {:ok, <<123>>, <<>>}
 
-  iex> 210 |> encode(byte())
+  iex> <<210>> |> encode(byte())
   {:ok, <<210>>}
-
-  iex> 400 |> encode(byte())
-  {:error, "400 cannot be encoded in 8 bits"}
   ```
   """
   @spec byte() :: codec(non_neg_integer)
   def byte(), do: bytes(1)
 
   @doc """
-  Encodes/decodes a series of bytes as an unsigned integer.
+  Encodes/decodes a series of bytes.
 
   ## Examples
   ```
-  iex> <<1, 2>> |> decode(bytes(2))
-  {:ok, 258, <<>>}
+  iex> <<123, 234>> |> decode(bytes(2))
+  {:ok, <<123, 234>>, <<>>}
 
-  iex> 258 |> encode(bytes(2))
-  {:ok, <<1, 2>>}
+  iex> <<123, 234>> |> encode(bytes(2))
+  {:ok, <<123, 234>>}
   ```
   """
   @spec bytes(non_neg_integer) :: codec(non_neg_integer)
-  def bytes(count), do: bits(count * 8)
+  def bytes(count) when count >= 0, do: bits(count * 8)
+  def bytes(bad_count), do: raise("count must be >= 0, was #{bad_count}")
 
+  @doc """
+  Encodes/decodes a series of bits as an unsigned integer.
+
+  ## Examples
+  ```
+  iex> <<1, 2>> |> decode(uint(16))
+  {:ok, 258, <<>>}
+
+  iex> 258 |> encode(uint(16))
+  {:ok, <<1, 2>>}
+  ```
+  """
+  @spec uint(non_neg_integer) :: codec(non_neg_integer)
+  def uint(bit_size), do: create(&uint_encoder(bit_size, &1), &uint_decoder(bit_size, &1))
+
+  @doc """
+  Encodes/decodes a series of bits as a signed integer.
+
+  ## Examples
+  ```
+  iex> <<1, 2>> |> decode(int(16))
+  {:ok, 258, <<>>}
+
+  iex> <<0xFE, 0xFE>> |> decode(int(16))
+  {:ok, -258, <<>>}
+
+  iex> 258 |> encode(int(16))
+  {:ok, <<1, 2>>}
+
+  iex> -258 |> encode(int(16))
+  {:ok, <<0xFE, 0xFE>>}
+  ```
+  """
+  @spec int(non_neg_integer) :: codec(integer)
+  def int(bit_size), do: create(&int_encoder(bit_size, &1), &int_decoder(bit_size, &1))
 
   @doc """
   Uses zlib to compress the bits after encoding with `codec` and to uncompress before decoding with `codec`.
@@ -797,10 +840,10 @@ defmodule Bifrost do
   ## Examples
   ```
   # Compression actually makes the result bigger with data this small just from the headers but you get the point.
-  iex> [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] |> encode(list(byte()) |> zlib())
+  iex> [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] |> encode(list(uint(8)) |> zlib())
   {:ok, <<120, 156, 99, 100, 98, 102, 97, 101, 99, 231, 224, 228, 2, 0, 0, 230, 0, 56>>}
 
-  iex> <<120, 156, 99, 100, 98, 102, 97, 101, 99, 231, 224, 228, 2, 0, 0, 230, 0, 56>> |> decode(list(byte()) |> zlib())
+  iex> <<120, 156, 99, 100, 98, 102, 97, 101, 99, 231, 224, 228, 2, 0, 0, 230, 0, 56>> |> decode(list(uint(8)) |> zlib())
   {:ok, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], <<>>}
 
   ```
@@ -808,12 +851,13 @@ defmodule Bifrost do
   @spec zlib(codec(type)) :: codec(type)
   def zlib(codec), do: create(&zlib_encoder(codec, &1), &zlib_decoder(codec, &1))
 
+  # TODO: Get rid of this since it kills performance
   defp safe_encode(encode) do
     fn a ->
       try do
         encode.(a)
       rescue
-        _ -> {:error, "Failed to encode #{inspect(a)}"}
+        _ -> {:error, "Failed to encode", a}
       end
     end
   end
@@ -831,16 +875,17 @@ defmodule Bifrost do
   defp split_by(binary, group_size),
     do: binary |> String.codepoints() |> Enum.chunk_every(group_size) |> Enum.map(&Enum.join/1)
 
-  defp bits_encoder(count, n) do
-    if(n < Integer.pow(2, count),
-      do: {:ok, <<n::size(count)>>},
-      else: {:error, "#{n} cannot be encoded in #{count} bits"}
-    )
+  defp bits_encoder(count, bits) do
+    if bit_size(bits) == count do
+      {:ok, bits}
+    else
+      {:error, "Cannot be encoded in #{count} bits", bits}
+    end
   end
 
   defp bits_decoder(count, bits) do
     case bits do
-      <<n::size(count), rest::bits>> -> {:ok, n, rest}
+      <<bits::bits-size(count), rest::bits>> -> {:ok, bits, rest}
       bits -> {:error, "Could not decode #{count} bits from #{inspect(bits)}", bits}
     end
   end
@@ -862,7 +907,7 @@ defmodule Bifrost do
   defp constant_encoder(value, bits, a) do
     case a do
       ^value -> {:ok, bits}
-      other -> {:error, "#{inspect(other)} did not equal #{inspect(value)} in constant"}
+      other -> {:error, "Did not equal #{inspect(value)} in constant", other}
     end
   end
 
@@ -899,7 +944,7 @@ defmodule Bifrost do
   end
 
   defp fallback_encoder(codec1, codec2, a) do
-    with {:error, _} <- codec1.encode.(a) do
+    with {:error, _, _} <- codec1.encode.(a) do
       codec2.encode.(a)
     end
   end
@@ -907,6 +952,41 @@ defmodule Bifrost do
   defp fallback_decoder(codec1, codec2, bits) do
     with {:error, _, _} <- codec1.decode.(bits) do
       codec2.decode.(bits)
+    end
+  end
+
+  defp uint_encoder(bit_size, a) do
+    if Integer.pow(2, bit_size) > a do
+      {:ok, <<a::unsigned-size(bit_size)>>}
+    else
+      {:error, "Cannot be encoded in #{bit_size} bits", a}
+    end
+  end
+
+  defp uint_decoder(bit_size, bits) do
+    if bit_size <= bit_size(bits) do
+      <<n::unsigned-size(bit_size), rest::bits>> = bits
+      {:ok, n, rest}
+    else
+      {:error, "Could not decode #{bit_size} bits from #{inspect(bits)}", bits}
+    end
+  end
+
+  defp int_encoder(bit_size, a) do
+    # 8 bits goes from -128 to 127
+    if Integer.pow(2, bit_size - 1) > a and -Integer.pow(2, bit_size) <= a do
+      {:ok, <<a::signed-size(bit_size)>>}
+    else
+      {:error, "Cannot be encoded in #{bit_size} bits", a}
+    end
+  end
+
+  defp int_decoder(bit_size, bits) do
+    if bit_size <= bit_size(bits) do
+      <<n::signed-size(bit_size), rest::bits>> = bits
+      {:ok, n, rest}
+    else
+      {:error, "Could not decode #{bit_size} bits from #{inspect(bits)}", bits}
     end
   end
 

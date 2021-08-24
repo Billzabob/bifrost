@@ -12,22 +12,22 @@ defmodule BinCodexTest do
 
   describe "combine/2" do
     test "creates a codec of a tuple of the supplied values" do
-      codec = combine(byte(), byte())
+      codec = combine(uint(8), uint(8))
       assert {:ok, <<1, 2>>} == {1, 2} |> encode(codec)
       assert {:ok, {1, 2}, <<>>} == <<1, 2>> |> decode(codec)
 
-      codec = combine(byte(), list(byte()))
+      codec = combine(uint(8), list(uint(8)))
       assert {:ok, <<1, 1, 2, 3>>} == {1, [1, 2, 3]} |> encode(codec)
       assert {:ok, {1, [1, 2, 3]}, <<>>} == <<1, 1, 2, 3>> |> decode(codec)
 
-      codec = combine(byte(), combine(byte(), byte()))
+      codec = combine(uint(8), combine(uint(8), uint(8)))
       assert {:ok, <<1, 2, 3>>} == {1, {2, 3}} |> encode(codec)
       assert {:ok, {1, {2, 3}}, <<>>} == <<1, 2, 3>> |> decode(codec)
     end
 
     property "is idempotent" do
       check all(tuple <- Prop.tuple({Prop.byte(), Prop.byte()})) do
-        codec = combine(byte(), byte())
+        codec = combine(uint(8), uint(8))
         assert is_idempotent?(codec, tuple)
       end
     end

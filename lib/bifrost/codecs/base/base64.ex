@@ -13,9 +13,9 @@ defmodule Bifrost.Codecs.Base.Base64 do
 
   import Bifrost
 
-  @capitals 65..90 |> Enum.map(&:binary.encode_unsigned/1)
-  @lowers 97..122 |> Enum.map(&:binary.encode_unsigned/1)
-  @numbers 48..57 |> Enum.map(&:binary.encode_unsigned/1)
+  @capitals ?A..?Z |> Enum.map(&:binary.encode_unsigned/1)
+  @lowers ?a..?z |> Enum.map(&:binary.encode_unsigned/1)
+  @numbers ?0..?9 |> Enum.map(&:binary.encode_unsigned/1)
 
   @num_to_char (@capitals ++ @lowers ++ @numbers ++ ["+", "/"])
                |> Enum.with_index()
@@ -48,7 +48,7 @@ defmodule Bifrost.Codecs.Base.Base64 do
         |> Enum.map(&(&1 |> sequence() |> join()))
       )
     )
-    |> join(4)
+    |> join(32)
   end
 
   defp padding(count), do: List.duplicate(value("="), count)

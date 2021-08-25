@@ -13,8 +13,8 @@ defmodule Bifrost.Codecs.Base.Base16 do
 
   import Bifrost
 
-  @numbers 48..57 |> Enum.map(&:binary.encode_unsigned/1)
-  @capitals 65..70 |> Enum.map(&:binary.encode_unsigned/1)
+  @numbers ?0..?9 |> Enum.map(&:binary.encode_unsigned/1)
+  @capitals ?A..?F |> Enum.map(&:binary.encode_unsigned/1)
 
   @num_to_char (@numbers ++ @capitals)
                |> Enum.with_index()
@@ -33,5 +33,5 @@ defmodule Bifrost.Codecs.Base.Base16 do
   ```
   """
   @spec codec() :: Bifrost.codec(String.t())
-  def codec(), do: list(list_of(2, bits(4) |> mapping(@num_to_char)) |> join()) |> join(2)
+  def codec(), do: list(list_of(2, bits(4) |> mapping(@num_to_char)) |> join()) |> join(16)
 end

@@ -242,7 +242,7 @@ defmodule Bifrost do
   """
   @spec fail(String.t(), String.t()) :: codec(any)
   def fail(encode_error, decode_error),
-    do: create(fn _ -> {:error, encode_error} end, fn bits -> {:error, decode_error, bits} end)
+    do: create(fn a -> {:error, encode_error, a} end, fn bits -> {:error, decode_error, bits} end)
 
   @doc """
   Tries to encode/decode each codec in succession, using the first one that succeeds.
@@ -326,6 +326,15 @@ defmodule Bifrost do
   @spec convert(codec(type), (type -> type2), (type2 -> type)) :: codec(type2)
   def convert(codec, convert_to, convert_from),
     do: create(&convert_encoder(codec, convert_from, &1), &convert_decoder(codec, convert_to, &1))
+
+  @doc """
+  Can be used during testing to help debug codecs by printing their progress.
+  """
+  @spec debug(codec(type)) :: codec(type)
+  def debug(codec) do
+    # credo:disable-for-next-line
+    codec |> convert(&IO.inspect(&1, label: "Decoding"), &IO.inspect(&1, label: "Encoding"))
+  end
 
   @spec not_(boolean_codec()) :: boolean_codec()
   def not_(boolean_codec), do: boolean_codec |> convert(&!/1, &!/1)
@@ -639,8 +648,9 @@ defmodule Bifrost do
   def length_prefixed(length_codec, codec),
     do: length_codec |> then(&list_of(&1, codec), &length/1)
 
-  @spec join(list_codec(binary), pos_integer) :: codec(binary)
-  def join(codec, group_size \\ 1), do: codec |> convert(&Enum.join/1, &split_by(&1, group_size))
+  @spec join(list_codec(bitstring), pos_integer) :: codec(bitstring)
+  def join(codec, group_size \\ 8),
+    do: codec |> convert(&Enum.into(&1, <<>>), &split_by(&1, group_size))
 
   @doc """
   Uses a map to convert a codecs results.
@@ -872,24 +882,6 @@ defmodule Bifrost do
     end
   end
 
-  defp split_by(binary, group_size),
-    do: binary |> String.codepoints() |> Enum.chunk_every(group_size) |> Enum.map(&Enum.join/1)
-
-  defp bits_encoder(count, bits) do
-    if bit_size(bits) == count do
-      {:ok, bits}
-    else
-      {:error, "Cannot be encoded in #{count} bits", bits}
-    end
-  end
-
-  defp bits_decoder(count, bits) do
-    case bits do
-      <<bits::bits-size(count), rest::bits>> -> {:ok, bits, rest}
-      bits -> {:error, "Could not decode #{count} bits from #{inspect(bits)}", bits}
-    end
-  end
-
   defp combine_encoder(codec1, codec2, {a, b}) do
     with {:ok, a_bits} <- codec1.encode.(a),
          {:ok, b_bits} <- codec2.encode.(b) do
@@ -920,6 +912,18 @@ defmodule Bifrost do
     end
   end
 
+  defp fallback_encoder(codec1, codec2, a) do
+    with {:error, _, _} <- codec1.encode.(a) do
+      codec2.encode.(a)
+    end
+  end
+
+  defp fallback_decoder(codec1, codec2, bits) do
+    with {:error, _, _} <- codec1.decode.(bits) do
+      codec2.decode.(bits)
+    end
+  end
+
   defp convert_encoder(codec, convert_from, a), do: a |> convert_from.() |> codec.encode.()
 
   defp convert_decoder(codec, convert_to, a) do
@@ -943,15 +947,25 @@ defmodule Bifrost do
     end
   end
 
-  defp fallback_encoder(codec1, codec2, a) do
-    with {:error, _, _} <- codec1.encode.(a) do
-      codec2.encode.(a)
+  defp split_by(bits, group_size) do
+    case bits do
+      <<head::bits-size(group_size), rest::bits>> -> [head | split_by(rest, group_size)]
+      <<>> -> []
     end
   end
 
-  defp fallback_decoder(codec1, codec2, bits) do
-    with {:error, _, _} <- codec1.decode.(bits) do
-      codec2.decode.(bits)
+  defp bits_encoder(count, bits) do
+    if bit_size(bits) == count do
+      {:ok, bits}
+    else
+      {:error, "Cannot be encoded in #{count} bits", bits}
+    end
+  end
+
+  defp bits_decoder(count, bits) do
+    case bits do
+      <<bits::bits-size(count), rest::bits>> -> {:ok, bits, rest}
+      bits -> {:error, "Could not decode #{count} bits from #{inspect(bits)}", bits}
     end
   end
 
